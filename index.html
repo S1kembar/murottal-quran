@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Murottal Al-Qur'an</title>
+  <style>
+    body { font-family: system-ui, sans-serif; background: #0f172a; color: #f8fafc; margin: 0; padding: 16px; }
+    .container { max-width: 500px; margin: auto; }
+    h2 { text-align: center; color: #38bdf8; margin-bottom: 14px; }
+    label { display: block; font-size: 13px; color: #94a3b8; margin-top: 10px; }
+    select, button { width: 100%; padding: 12px; margin-top: 6px; border-radius: 8px; border: none; font-size: 16px; }
+    select { background: #1e293b; color: #fff; border: 1px solid #334155; }
+    button { background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; margin-top: 14px; }
+    audio { width: 100%; margin-top: 14px; }
+    #infoAudio { font-size: 13px; color: #38bdf8; text-align: center; margin-top: 6px; min-height: 18px; }
+    .ayat { background: #1e293b; padding: 14px; margin-top: 10px; border-radius: 8px; cursor: pointer; }
+    .ayat.aktif { border: 2px solid #38bdf8; background: #0c4a6e; }
+    .arab { font-size: 24px; text-align: right; line-height: 1.8; margin-bottom: 8px; }
+    .arti { font-size: 14px; color: #cbd5e1; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Murottal Al-Qur'an</h2>
+
+    <label for="pilihQari">Pilih Qari (12 Imam):</label>
+    <select id="pilihQari" onchange="gantiQari()">
+      <option value="128/ar.alafasy">Syaikh Mishary Rashid Alafasy</option>
+      <option value="128/ar.abdurrahmaansudais">Syaikh Abdurrahman As-Sudais</option>
+      <option value="128/ar.mahermuaiqly">Syaikh Maher Al-Muaiqly</option>
+      <option value="128/ar.husary">Syaikh Mahmoud Khalil Al-Husary</option>
+      <option value="128/ar.minshawi">Syaikh Mohamed Siddiq El-Minshawi</option>
+      <option value="128/ar.ahmedajamy">Syaikh Ahmed Al-Ajmy</option>
+      <option value="64/ar.abdulbasitmurattal">Syaikh Abdul Basit (Murattal)</option>
+      <option value="64/ar.saoodshuraym">Syaikh Sa'ud Al-Shuraim</option>
+      <option value="64/ar.hanirifai">Syaikh Hani Ar-Rifai</option>
+      <option value="128/ar.shaatree">Syaikh Abu Bakr Al-Shatri</option>
+      <option value="128/ar.hudhaify">Syaikh Ali Al-Hudhaify</option>
+      <option value="128/ar.muhammadjibreel">Syaikh Muhammad Jibreel</option>
+    </select>
+
+    <label for="pilihSurat">Pilih Surah:</label>
+    <select id="pilihSurat" onchange="tampilkanSurat()"></select>
+
+    <button onclick="putarSemua()">▶ Putar Semua Ayat</button>
+
+    <audio id="audio" controls></audio>
+    <div id="infoAudio"></div>
+    <div id="daftarAyat">Memuat data...</div>
+  </div>
+
+  <script>
+    let semuaSurat = [];
+    let daftarAyat = [];
+    let indeksAktif = -1;
+    const audio = document.getElementById("audio");
+    const infoAudio = document.getElementById("infoAudio");
+    const pilihQari = document.getElementById("pilihQari");
+    const pilihSurat = document.getElementById("pilihSurat");
+    const wadahAyat = document.getElementById("daftarAyat");
+
+    async function muatData() {
+      try {
+        const res = await fetch("quran.json");
+        if (!res.ok) throw new Error("File quran.json tidak ditemukan");
+        semuaSurat = await res.json();
+
+        pilihSurat.innerHTML = semuaSurat.map((s, idx) =>
+          `<option value="${idx}">${s.id}. ${s.transliteration} (${s.name})</option>`
+        ).join("");
+
+        tampilkanSurat();
+      } catch (e) {
+        wadahAyat.innerHTML = "<p>Gagal memuat: " + e.message + "</p>";
+      }
+    }
+
+    function tampilkanSurat() {
+      const idxSurat = parseInt(pilihSurat.value || 0);
+      const qariPath = pilihQari.value;
+      const surat = semuaSurat[idxSurat];
+      if (!surat) return;
+
+      indeksAktif = -1;
+      audio.pause();
+      infoAudio.textContent = "";
+
+      let offsetGlobal = 0;
+      for (let i = 0; i < idxSurat; i++) {
+        offsetGlobal += semuaSurat[i].verses.length;
+      }
+
+      daftarAyat = surat.verses.map((v, i) => {
+        const noAyat = v.id || (i + 1);
+        const nomorGlobal = offsetGlobal + noAyat;
+        const linkOnline = ["https:", "", "cdn.islamic.network", "quran", "audio", qariPath, nomorGlobal + ".mp3"].join("/");
+        return {
+          nomor: noAyat,
+          arab: v.text,
+          arti: v.translation,
+          online: linkOnline
+        };
+      });
+
+      wadahAyat.innerHTML = daftarAyat.map((a, idx) => `
+        <div class="ayat" id="ayat-${idx}" onclick="putarAyat(${idx})">
+          <div class="arab">${a.arab} (${a.nomor})</div>
+          <div class="arti">${a.nomor}. ${a.arti}</div>
+        </div>
+      `).join("");
+    }
+
+    function gantiQari() {
+      const ayatSedangDiputar = indeksAktif;
+      tampilkanSurat();
+      if (ayatSedangDiputar >= 0) putarAyat(ayatSedangDiputar);
+    }
+
+    function putarAyat(idx) {
+      if (idx >= daftarAyat.length) return;
+      indeksAktif = idx;
+      document.querySelectorAll(".ayat").forEach(el => el.classList.remove("aktif"));
+      const elAktif = document.getElementById("ayat-" + idx);
+      if (elAktif) {
+        elAktif.classList.add("aktif");
+        elAktif.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+      const item = daftarAyat[idx];
+      infoAudio.textContent = "Memuat ayat " + item.nomor + "...";
+      audio.src = item.online;
+      audio.play().then(() => {
+        infoAudio.textContent = "Memutar Ayat " + item.nomor;
+      }).catch(() => {
+        infoAudio.textContent = "Klik tombol Play (▶) pada pemutar di atas.";
+      });
+    }
+
+    audio.addEventListener("error", () => {
+      infoAudio.textContent = "Gagal memuat audio. Periksa koneksi internet.";
+    });
+
+    function putarSemua() { putarAyat(0); }
+
+    audio.addEventListener("ended", () => {
+      if (indeksAktif + 1 < daftarAyat.length) putarAyat(indeksAktif + 1);
+    });
+
+    muatData();
+  </script>
+</body>
+</html>
