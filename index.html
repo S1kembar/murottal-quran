@@ -11,9 +11,13 @@
     label { display: block; font-size: 13px; color: #94a3b8; margin-top: 10px; }
     select, button { width: 100%; padding: 12px; margin-top: 6px; border-radius: 8px; border: none; font-size: 16px; }
     select { background: #1e293b; color: #fff; border: 1px solid #334155; }
-    button { background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; margin-top: 14px; }
+    .btn-group { display: flex; gap: 8px; margin-top: 14px; }
+    .btn-play { background: #0284c7; color: #fff; font-weight: bold; cursor: pointer; flex: 1; }
+    .btn-dl { background: #059669; color: #fff; font-weight: bold; cursor: pointer; flex: 1; }
+    .btn-dl:disabled { background: #475569; cursor: not-allowed; }
     audio { width: 100%; margin-top: 14px; }
     #infoAudio { font-size: 13px; color: #38bdf8; text-align: center; margin-top: 6px; min-height: 18px; }
+    .badge-offline { display: inline-block; background: #059669; color: #fff; font-size: 11px; padding: 2px 8px; border-radius: 99px; margin-left: 6px; vertical-align: middle; }
     .ayat { background: #1e293b; padding: 14px; margin-top: 10px; border-radius: 8px; cursor: pointer; }
     .ayat.aktif { border: 2px solid #38bdf8; background: #0c4a6e; }
     .arab { font-size: 24px; text-align: right; line-height: 1.8; margin-bottom: 8px; }
@@ -22,8 +26,7 @@
 </head>
 <body>
   <div class="container">
-    <h2>Murottal Al-Qur'an</h2>
-
+    <h2>Murottal Al-Qur'an <span id="badgeOffline" class="badge-offline" style="display:none;">OFFLINE</span></h2>
     <label for="pilihQari">Pilih Qari (12 Imam):</label>
     <select id="pilihQari" onchange="gantiQari()">
       <option value="128/ar.alafasy">Syaikh Mishary Rashid Alafasy</option>
@@ -39,113 +42,132 @@
       <option value="128/ar.hudhaify">Syaikh Ali Al-Hudhaify</option>
       <option value="128/ar.muhammadjibreel">Syaikh Muhammad Jibreel</option>
     </select>
-
     <label for="pilihSurat">Pilih Surah:</label>
     <select id="pilihSurat" onchange="tampilkanSurat()"></select>
-
-    <button onclick="putarSemua()">▶ Putar Semua Ayat</button>
-
-    <audio id="audio" controls></audio>
+    <div class="btn-group">
+      <button class="btn-play" onclick="putarSemua()">▶ Putar Semua</button>
+      <button class="btn-dl" id="btnUnduh" onclick="unduhSurah()">⬇ Unduh Offline</button>
+    </div>
+    <audio id="audio" controls playsinline></audio>
     <div id="infoAudio"></div>
     <div id="daftarAyat">Memuat data...</div>
   </div>
-
   <script>
-    let semuaSurat = [];
-    let daftarAyat = [];
-    let indeksAktif = -1;
-    const audio = document.getElementById("audio");
-    const infoAudio = document.getElementById("infoAudio");
-    const pilihQari = document.getElementById("pilihQari");
-    const pilihSurat = document.getElementById("pilihSurat");
-    const wadahAyat = document.getElementById("daftarAyat");
+    const CACHE_NAME = "murottal-offline-v1";
+    let semuaSurat = [], daftarAyat = [], indeksAktif = -1, namaSuratAktif = "", modeOffline = false, blobUrlAktif = null;
+    const audio = document.getElementById("audio"), infoAudio = document.getElementById("infoAudio");
+    const pilihQari = document.getElementById("pilihQari"), pilihSurat = document.getElementById("pilihSurat");
+    const wadahAyat = document.getElementById("daftarAyat"), btnUnduh = document.getElementById("btnUnduh"), badgeOffline = document.getElementById("badgeOffline");
 
     async function muatData() {
       try {
-        const res = await fetch("quran.json");
-        if (!res.ok) throw new Error("File quran.json tidak ditemukan");
+        let res;
+        if ("caches" in window) {
+          const cache = await caches.open(CACHE_NAME);
+          const cachedJson = await cache.match("quran.json");
+          if (cachedJson) { res = cachedJson; }
+          else { res = await fetch("quran.json"); if (res.ok) cache.put("quran.json", res.clone()); }
+        } else { res = await fetch("quran.json"); }
+        if (!res || !res.ok) throw new Error("File quran.json tidak ditemukan");
         semuaSurat = await res.json();
-
-        pilihSurat.innerHTML = semuaSurat.map((s, idx) =>
-          `<option value="${idx}">${s.id}. ${s.transliteration} (${s.name})</option>`
-        ).join("");
-
+        pilihSurat.innerHTML = semuaSurat.map((s, idx) => `<option value="${idx}">${s.id}. ${s.transliteration} (${s.name})</option>`).join("");
         tampilkanSurat();
-      } catch (e) {
-        wadahAyat.innerHTML = "<p>Gagal memuat: " + e.message + "</p>";
-      }
+      } catch (e) { wadahAyat.innerHTML = "<p>Gagal memuat: " + e.message + "</p>"; }
     }
 
-    function tampilkanSurat() {
-      const idxSurat = parseInt(pilihSurat.value || 0);
-      const qariPath = pilihQari.value;
-      const surat = semuaSurat[idxSurat];
+    async function cekStatusOffline() {
+      if (!("caches" in window) || daftarAyat.length === 0) { modeOffline = false; return; }
+      const cache = await caches.open(CACHE_NAME);
+      const cekPertama = await cache.match(daftarAyat[0].online);
+      const cekTerakhir = await cache.match(daftarAyat[daftarAyat.length - 1].online);
+      modeOffline = Boolean(cekPertama && cekTerakhir);
+      badgeOffline.style.display = modeOffline ? "inline-block" : "none";
+      btnUnduh.textContent = modeOffline ? "✔ Tersimpan Offline" : "⬇ Unduh Offline";
+    }
+
+    async function tampilkanSurat() {
+      const idxSurat = parseInt(pilihSurat.value || 0), qariPath = pilihQari.value, surat = semuaSurat[idxSurat];
       if (!surat) return;
-
-      indeksAktif = -1;
-      audio.pause();
-      infoAudio.textContent = "";
-
+      namaSuratAktif = surat.transliteration; indeksAktif = -1; audio.pause(); infoAudio.textContent = "";
       let offsetGlobal = 0;
-      for (let i = 0; i < idxSurat; i++) {
-        offsetGlobal += semuaSurat[i].verses.length;
-      }
-
+      for (let i = 0; i < idxSurat; i++) offsetGlobal += semuaSurat[i].verses.length;
       daftarAyat = surat.verses.map((v, i) => {
-        const noAyat = v.id || (i + 1);
-        const nomorGlobal = offsetGlobal + noAyat;
-        const linkOnline = ["https:", "", "cdn.islamic.network", "quran", "audio", qariPath, nomorGlobal + ".mp3"].join("/");
-        return {
-          nomor: noAyat,
-          arab: v.text,
-          arti: v.translation,
-          online: linkOnline
-        };
+        const noAyat = v.id || (i + 1), nomorGlobal = offsetGlobal + noAyat;
+        return { nomor: noAyat, arab: v.text, arti: v.translation, online: ["https:", "", "cdn.islamic.network", "quran", "audio", qariPath, nomorGlobal + ".mp3"].join("/") };
       });
+      wadahAyat.innerHTML = daftarAyat.map((a, idx) => `<div class="ayat" id="ayat-${idx}" onclick="putarAyat(${idx})"><div class="arab">${a.arab} (${a.nomor})</div><div class="arti">${a.nomor}. ${a.arti}</div></div>`).join("");
+      await cekStatusOffline();
+    }
 
-      wadahAyat.innerHTML = daftarAyat.map((a, idx) => `
-        <div class="ayat" id="ayat-${idx}" onclick="putarAyat(${idx})">
-          <div class="arab">${a.arab} (${a.nomor})</div>
-          <div class="arti">${a.nomor}. ${a.arti}</div>
-        </div>
-      `).join("");
+    async function unduhSurah() {
+      if (!("caches" in window)) { infoAudio.textContent = "Browser tidak mendukung mode offline."; return; }
+      if (daftarAyat.length === 0) return;
+      btnUnduh.disabled = true;
+      const cache = await caches.open(CACHE_NAME);
+      let selesai = 0;
+      for (const item of daftarAyat) {
+        btnUnduh.textContent = `⏳ ${selesai}/${daftarAyat.length}`;
+        infoAudio.textContent = `Mengunduh ayat ${item.nomor} dari ${daftarAyat.length}...`;
+        try {
+          if (!(await cache.match(item.online))) {
+            const res = await fetch(item.online);
+            if (res.ok) await cache.put(item.online, res);
+          }
+          selesai++;
+        } catch (e) {}
+      }
+      btnUnduh.disabled = false;
+      infoAudio.textContent = `Selesai! ${selesai} dari ${daftarAyat.length} ayat tersimpan.`;
+      await cekStatusOffline();
+    }
+
+    function perbaruiMediaSession(nomorAyat) {
+      if ("mediaSession" in navigator) {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: `QS. ${namaSuratAktif} : Ayat ${nomorAyat}`,
+          artist: pilihQari.options[pilihQari.selectedIndex].text,
+          album: "Murottal Al-Qur'an"
+        });
+        navigator.mediaSession.setActionHandler("play", () => audio.play());
+        navigator.mediaSession.setActionHandler("pause", () => audio.pause());
+        navigator.mediaSession.setActionHandler("previoustrack", () => { if (indeksAktif > 0) putarAyat(indeksAktif - 1); });
+        navigator.mediaSession.setActionHandler("nexttrack", () => { if (indeksAktif + 1 < daftarAyat.length) putarAyat(indeksAktif + 1); });
+      }
     }
 
     function gantiQari() {
       const ayatSedangDiputar = indeksAktif;
-      tampilkanSurat();
-      if (ayatSedangDiputar >= 0) putarAyat(ayatSedangDiputar);
+      tampilkanSurat().then(() => { if (ayatSedangDiputar >= 0) putarAyat(ayatSedangDiputar); });
     }
 
-    function putarAyat(idx) {
+    async function putarAyat(idx) {
       if (idx >= daftarAyat.length) return;
       indeksAktif = idx;
       document.querySelectorAll(".ayat").forEach(el => el.classList.remove("aktif"));
       const elAktif = document.getElementById("ayat-" + idx);
-      if (elAktif) {
-        elAktif.classList.add("aktif");
-        elAktif.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
+      if (elAktif) { elAktif.classList.add("aktif"); elAktif.scrollIntoView({ behavior: "smooth", block: "center" }); }
       const item = daftarAyat[idx];
-      infoAudio.textContent = "Memuat ayat " + item.nomor + "...";
-      audio.src = item.online;
+      let sumberAudio = item.online, dariCache = false;
+      if ("caches" in window) {
+        const cache = await caches.open(CACHE_NAME);
+        const cachedAudio = await cache.match(item.online);
+        if (cachedAudio) {
+          if (blobUrlAktif) URL.revokeObjectURL(blobUrlAktif);
+          blobUrlAktif = URL.createObjectURL(await cachedAudio.blob());
+          sumberAudio = blobUrlAktif; dariCache = true;
+        }
+      }
+      infoAudio.textContent = (dariCache ? "[Offline] " : "") + "Memuat ayat " + item.nomor + "...";
+      audio.src = sumberAudio;
       audio.play().then(() => {
-        infoAudio.textContent = "Memutar Ayat " + item.nomor;
-      }).catch(() => {
-        infoAudio.textContent = "Klik tombol Play (▶) pada pemutar di atas.";
-      });
+        infoAudio.textContent = (dariCache ? "[Offline] " : "") + "Memutar Ayat " + item.nomor;
+        perbaruiMediaSession(item.nomor);
+      }).catch(() => { infoAudio.textContent = "Klik tombol Play (▶) pada pemutar di atas."; });
     }
 
-    audio.addEventListener("error", () => {
-      infoAudio.textContent = "Gagal memuat audio. Periksa koneksi internet.";
-    });
-
+    audio.addEventListener("error", () => { infoAudio.textContent = "Gagal memuat audio. Periksa koneksi internet."; });
     function putarSemua() { putarAyat(0); }
-
-    audio.addEventListener("ended", () => {
-      if (indeksAktif + 1 < daftarAyat.length) putarAyat(indeksAktif + 1);
-    });
-
+    audio.addEventListener("ended", () => { if (indeksAktif + 1 < daftarAyat.length) putarAyat(indeksAktif + 1); });
     muatData();
   </script>
 </body>
