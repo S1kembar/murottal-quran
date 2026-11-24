@@ -23,6 +23,8 @@
     .arab { font-size: 24px; text-align: right; line-height: 1.8; margin-bottom: 8px; }
     .arti { font-size: 14px; color: #cbd5e1; }
   </style>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#0f172a">
 </head>
 <body>
   <div class="container">
@@ -169,6 +171,7 @@
     function putarSemua() { putarAyat(0); }
     audio.addEventListener("ended", () => { if (indeksAktif + 1 < daftarAyat.length) putarAyat(indeksAktif + 1); });
     muatData();
+    if ("serviceWorker" in navigator) { navigator.serviceWorker.register("sw.js"); }
   </script>
 </body>
 </html>
