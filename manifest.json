@@ -1,24 +1,21 @@
 {
   "name": "Murottal Al-Qur'an",
   "short_name": "Murottal",
-  "start_url": "https://github.io",
-  "scope": "https://github.io",
+  "description": "Aplikasi streaming dan pemutar murottal Al-Qur'an",
+  "start_url": "./",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "orientation": "portrait",
+  "background_color": "#ffffff",
+  "theme_color": "#0d9488",
   "icons": [
     {
       "src": "icon-192.png",
       "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     },
     {
       "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any"
+      "type": "image/png"
     }
   ]
 }
