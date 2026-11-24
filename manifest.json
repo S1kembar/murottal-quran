@@ -1,18 +1,24 @@
 {
   "name": "Murottal Al-Qur'an",
   "short_name": "Murottal",
-  "start_url": "/murottal-quran/",
-  "scope": "/murottal-quran/",
+  "start_url": "https://github.io",
+  "scope": "https://github.io",
   "display": "standalone",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
   "orientation": "portrait",
   "icons": [
     {
-      "src": "icon.svg",
+      "src": "icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "icon-512.png",
       "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
+      "type": "image/png",
+      "purpose": "any"
     }
   ]
 }
